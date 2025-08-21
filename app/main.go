@@ -83,6 +83,16 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 			}
 		}
 		return results
+	case *AnchorNode:
+		if node.Type == 's' {
+			if startIdx == 0 {
+				return []MatchResult{{EndIdx: startIdx, Captures: captures}}
+			}
+		} else if node.Type == 'e' {
+			if startIdx == len(inputLine) {
+				return []MatchResult{{EndIdx: startIdx, Captures: captures}}
+			}
+		}
 	case *DotNode:
 		fmt.Println("DotNode")
 	case *ConcatenationNode:

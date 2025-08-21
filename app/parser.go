@@ -60,7 +60,7 @@ func (rp *RegexParser) parseEscapeSeq() (Node, error) {
 	// See what character is being escaped
 	escapedChar := rp.peek()
 	if escapedChar == 0 {
-		return nil, fmt.Errorf("Incomplete escape seqeunce at end of pattern")
+		return nil, fmt.Errorf("incomplete escape seqeunce at end of pattern")
 	}
 
 	// We have processed this character, so consume it
@@ -121,7 +121,15 @@ func (rp *RegexParser) parseAtom() Node {
 	} else if char == '.' {
 		node = NewDotNode()
 		rp.advance()
+	} else if char == '^' {
+		node = NewAnchorNode('s')
+		rp.advance()
+	} else if char == '$' {
+		fmt.Println("end anchor")
+		node = NewAnchorNode('e')
+		rp.advance()
 	} else {
+
 		node = NewLiteralNode(char)
 		rp.advance()
 	}
@@ -169,7 +177,7 @@ func (rp *RegexParser) parseAlternation() Node {
 func (rp *RegexParser) parse() (Node, error) {
 	node := rp.parseAlternation()
 	if rp.position != len(rp.pattern) {
-		return nil, fmt.Errorf("Unexpected characters at end of pattern: %v", rp.pattern[rp.position:])
+		return nil, fmt.Errorf("unexpected characters at end of pattern: %v", rp.pattern[rp.position:])
 	}
 	return node, nil
 }

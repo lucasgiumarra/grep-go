@@ -41,4 +41,35 @@ echo -n "1 apple" | ./ast -E "\d apple"
 echo "Test 6 passed."
 echo ""
 
+# --- Run test 7: Start of string anchor ---
+echo "Start of string anchor"
+set +e  # Allow commands to fail without exiting
+echo -n "log" | ./ast -E "^log"
+code1=$? # $? holds the exit code of the last command that was run
+set -e  # Re-enable exit on error
+
+if [ $code1 -ne 0 ]; then
+  echo "Expected exit code 0 for 'log', got $code1"
+  exit 1
+fi
+
+echo "Test 7 passed: correct exit codes received."
+echo ""
+
+# --- Run test 8: End of string anchor ---
+echo "End of string anchor"
+set +e  # Allow commands to fail without exiting
+echo -n "dog" | ./ast -E "dog$"
+code1=$? # $? holds the exit code of the last command that was run
+set -e  # Re-enable exit on error
+
+if [ $code1 -ne 0 ]; then
+  echo "Expected exit code 0 for 'dog', got $code1"
+  exit 1
+fi
+
+echo "Test 8 passed: correct exit codes received."
+echo ""
+
+# --- Cleanup ----
 rm ast

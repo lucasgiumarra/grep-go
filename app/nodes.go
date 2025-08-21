@@ -118,3 +118,21 @@ func (an *AlternationNode) String() string {
 func (an *AlternationNode) Children() []Node {
 	return an.Branches
 }
+
+// ------------------------------------------------------------------------------------------
+
+type AnchorNode struct {
+	Type rune // s for 'start' e for 'end'
+}
+
+func NewAnchorNode(typ rune) *AnchorNode {
+	return &AnchorNode{Type: typ}
+}
+
+func (an *AnchorNode) String() string {
+	return fmt.Sprintf("AnchorNode(type='%c')", an.Type)
+}
+
+func (an *AnchorNode) Children() []Node {
+	return nil
+}
