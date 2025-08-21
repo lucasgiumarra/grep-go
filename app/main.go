@@ -23,6 +23,27 @@ func isAlphaNumeric(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
+func matchFromChild(children []Node, childIdx int, inputLine string, pos int, caps []string) []MatchResult {
+	// Base case: If we have successfully matched all children, we have a valid result.
+	if childIdx == len(children) {
+		return []MatchResult{{EndIdx: pos, Captures: caps}}
+	}
+
+	var allResults []MatchResult
+
+	// Get the current child node to match.
+	child := children[childIdx]
+
+	// Find all possible ways the current child can match starting from `pos`.
+	matches := matchPossibilities(child, inputLine, pos, caps)
+
+	for _, res := range matches {
+		recursiveResults := matchFromChild(children, childIdx+1, inputLine, res.EndIdx, res.Captures)
+		allResults = append(allResults, recursiveResults...)
+	}
+	return allResults
+}
+
 func matchPossibilities(astNode Node, inputLine string, startIdx int, captures []string) []MatchResult {
 	if astNode == nil {
 		return nil
@@ -66,6 +87,8 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 		fmt.Println("DotNode")
 	case *ConcatenationNode:
 		fmt.Println("ConcatenationNode with children:", node.NodeChildren)
+		// Start the recursive matching process from the first child (index 0).
+		return matchFromChild(node.NodeChildren, 0, inputLine, startIdx, captures)
 	case *AlternationNode:
 		fmt.Println("AlternationNode with branches:", node.Branches)
 	}
@@ -110,6 +133,9 @@ func main() {
 		os.Exit(2)
 	}
 	line := string(input)
+
+	fmt.Println("Input:", line)
+	fmt.Println("Pattern:", pattern)
 
 	parser := NewRegexParser(pattern)
 	ast, err := parser.parse()
