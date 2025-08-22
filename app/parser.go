@@ -103,48 +103,84 @@ func (rp *RegexParser) parseCharSet() Node {
 	return NewCharSetNode(chars, negated)
 }
 
-func (rp *RegexParser) parseAtom() Node {
+func (rp *RegexParser) parseAtom() (Node, error) {
 	char := rp.peek()
 	if char == 0 {
-		return nil
+		return nil, nil
 	}
 
-	var node Node
+	var atom Node
 	var err error
-	if char == '[' {
-		node = rp.parseCharSet()
+	if char == '(' {
+		rp.advance()
+		rp.groupCount++
+		groupIdx := rp.groupCount
+		child, err := rp.parseAlternation()
+		if err != nil {
+			return nil, err
+		}
+		atom = NewCaptureGroupNode(child, groupIdx)
+		err = rp.expect(')')
+		if err != nil {
+			return nil, err
+		}
+	} else if char == '[' {
+		atom = rp.parseCharSet()
 	} else if char == '\\' {
-		node, err = rp.parseEscapeSeq()
+		atom, err = rp.parseEscapeSeq()
 		if err != nil {
 			fmt.Printf("ERR: %e\n", err)
 		}
 	} else if char == '.' {
-		node = NewDotNode()
+		atom = NewDotNode()
 		rp.advance()
 	} else if char == '^' {
-		node = NewAnchorNode('s')
+		atom = NewAnchorNode('s')
 		rp.advance()
 	} else if char == '$' {
-		fmt.Println("end anchor")
-		node = NewAnchorNode('e')
+		atom = NewAnchorNode('e')
 		rp.advance()
 	} else {
-
-		node = NewLiteralNode(char)
+		atom = NewLiteralNode(char)
 		rp.advance()
 	}
 
-	return node
+	if err != nil {
+		return nil, err
+	}
+	if atom == nil {
+		return nil, nil
+	}
+
+	nextChar := rp.peek()
+	if nextChar == '+' || nextChar == '*' || nextChar == '?' {
+		rp.advance()
+		var qType string
+		switch nextChar {
+		case '+':
+			qType = "ONE_OR_MORE"
+		case '*':
+			qType = "ZERO_OR_MORE"
+		case '?':
+			qType = "ZERO_OR_ONE"
+		}
+		return NewQuantifierNode(atom, qType, true), nil
+	}
+
+	return atom, nil
 }
 
-func (rp *RegexParser) parseConcatenation() Node {
+func (rp *RegexParser) parseConcatenation() (Node, error) {
 	var nodes []Node
 	for {
 		currentChar := rp.peek()
 		if currentChar == 0 || currentChar == '|' || currentChar == ')' {
 			break
 		}
-		atom := rp.parseAtom()
+		atom, err := rp.parseAtom()
+		if err != nil {
+			return nil, err
+		}
 		if atom != nil {
 			nodes = append(nodes, atom)
 		} else {
@@ -155,27 +191,54 @@ func (rp *RegexParser) parseConcatenation() Node {
 	}
 
 	if len(nodes) == 0 {
-		return nil
+		return nil, nil
 	} else if len(nodes) == 1 {
-		return nodes[0]
+		return nodes[0], nil
 	}
-	return NewConcatenationNode(nodes)
+	return NewConcatenationNode(nodes), nil
 }
 
-func (rp *RegexParser) parseAlternation() Node {
+func (rp *RegexParser) parseAlternation() (Node, error) {
 	// A | B | C
-	leftNode := rp.parseConcatenation()
-	if rp.peek() == '|' {
-		rp.advance()
-		rightNode := rp.parseConcatenation()
-		nodes := append(leftNode.Children(), rightNode.Children()...)
-		return NewAlternationNode(nodes)
+	branches := []Node{}
+	node, err := rp.parseConcatenation()
+	if err != nil {
+		return nil, err
 	}
-	return leftNode
+	if node != nil {
+		branches = append(branches, node)
+	}
+
+	// Loop to see if there are any more alternatives
+	for rp.peek() == '|' {
+		rp.advance() // Consume the '|'
+		node, err := rp.parseConcatenation()
+		if err != nil {
+			return nil, err
+		}
+		if node != nil {
+			branches = append(branches, node)
+		} else {
+			// This handles a pattern ending in '|' just like "a|".
+			// We can consider this an error or just stop parsing. For now we stop.
+			return nil, fmt.Errorf("pattern ends with an incomplete alternation")
+		}
+	}
+
+	if len(branches) == 0 {
+		return nil, nil
+	}
+	if len(branches) == 1 {
+		return branches[0], nil
+	}
+	return NewAlternationNode(branches), nil
 }
 
 func (rp *RegexParser) parse() (Node, error) {
-	node := rp.parseAlternation()
+	node, err := rp.parseAlternation()
+	if err != nil {
+		return nil, err
+	}
 	if rp.position != len(rp.pattern) {
 		return nil, fmt.Errorf("unexpected characters at end of pattern: %v", rp.pattern[rp.position:])
 	}

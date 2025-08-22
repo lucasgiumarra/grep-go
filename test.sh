@@ -71,5 +71,104 @@ fi
 echo "Test 8 passed: correct exit codes received."
 echo ""
 
+# --- Run test 9: Match one or more times ---
+echo "Match one or more times"
+set +e  # Allow commands to fail without exiting
+echo -n "ca" | ./ast -E "ca+t"
+code3=$?
+echo -n "caats" | ./ast -E "ca+ts"
+code4=$?
+echo -n "caaats" | ./ast -E "ca+at"
+code5=$?
+set -e
+
+if [ $code3 -ne 1 ]; then
+  echo "Expected exit code 1 for 'ca', got $code3"
+  exit 1
+fi
+
+if [ $code4 -ne 0 ]; then
+  echo "Expected exit code 0 for 'caats', got $code4"
+  exit 1
+fi
+
+if [ $code5 -ne 0 ]; then
+  echo "Expected exit code 0 for 'caaats', got $code5"
+  exit 1
+fi
+echo "Test 9 passed: correct exit codes received."
+echo ""
+
+# --- Run test 10: Match zero or more times ---
+echo -e "\033[1m -- Match zero or more times -- \033[0m"
+set +e  # Allow commands to fail without exiting
+echo -n "cat" | ./ast -E "ca?t"
+code4=$?
+echo -n "act" | ./ast -E "ca?t"
+code5=$?
+echo -n "dog" | ./ast -E "ca?t"
+code6=$?
+set -e
+
+if [ $code4 -ne 0 ]; then
+  echo "Expected exit code 0 for 'cat', got $code4"
+  exit 1
+fi
+
+if [ $code5 -ne 0 ]; then
+  echo "Expected exit code 0 for 'act', got $code5"
+  exit 1
+fi
+
+if [ $code6 -ne 1 ]; then
+  echo "Expected exit code 1 for 'dog', got $code6"
+  exit 1
+fi
+echo "Test 10 passed: correct exit codes received."
+echo ""
+
+# --- Run test 11: Wildcard ---
+echo "Wildcard"
+set +e  # Allow commands to fail without exiting
+echo -n "dog" | ./ast -E "d.g"
+code3=$?
+echo -n "dog" | ./ast -E "c.g"
+code4=$?
+set -e
+
+
+if [ $code3 -ne 0 ]; then
+  echo "Expected exit code 0 for 'dog', got $code3"
+  exit 1
+fi
+
+if [ $code4 -ne 1 ]; then
+  echo "Expected exit code 1 for 'dog', got $code4"
+  exit 1
+fi
+echo "Test 11 passed."
+echo ""
+
+# --- Run test 12: Alternation ---
+echo -e "\033[1m -- Alternation -- \033[0m"
+set +e  # Allow commands to fail without exiting
+echo -n "cat" | ./ast -E "(cat|dog)"
+code1=$?
+echo -n "dog" | ./ast -E "(cat|dog)"
+code2=$?
+set -e
+
+if [ $code1 -ne 0 ]; then
+  echo "Expected exit code 0 for 'cat', got $code1"
+  exit 1
+fi
+
+if [ $code2 -ne 0 ]; then
+  echo "Expected exit code 0 for 'dog', got $code2"
+  exit 1
+fi
+echo "Test 12 passed."
+echo ""
+
 # --- Cleanup ----
 rm ast

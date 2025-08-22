@@ -136,3 +136,42 @@ func (an *AnchorNode) String() string {
 func (an *AnchorNode) Children() []Node {
 	return nil
 }
+
+// ------------------------------------------------------------------------------------------
+
+type QuantifierNode struct {
+	NodeChildren Node
+	Type         string
+	Greed        bool
+}
+
+func NewQuantifierNode(children Node, typ string, isGreedy bool) *QuantifierNode {
+	return &QuantifierNode{NodeChildren: children, Type: typ, Greed: isGreedy}
+}
+
+func (qn *QuantifierNode) String() string {
+	return fmt.Sprintf("QuantifierNode(child='%v', type='%s', greedy='%v')", qn.NodeChildren, qn.Type, qn.Greed)
+}
+
+func (qn *QuantifierNode) Children() []Node {
+	return []Node{qn.NodeChildren}
+}
+
+// ------------------------------------------------------------------------------------------
+
+type CaptureGroupNode struct {
+	Child Node
+	Index int
+}
+
+func NewCaptureGroupNode(child Node, ind int) *CaptureGroupNode {
+	return &CaptureGroupNode{Child: child, Index: ind}
+}
+
+func (cgn *CaptureGroupNode) String() string {
+	return fmt.Sprintf("CaptureGroupNode(index='%d', child='%v')", cgn.Index, cgn.Child)
+}
+
+func (cgn *CaptureGroupNode) Children() []Node {
+	return []Node{cgn.Child}
+}

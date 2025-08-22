@@ -23,6 +23,13 @@ func isAlphaNumeric(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
+// reverseMatches reverses a slice of MatchResult in place.
+func reverseMatches(s []MatchResult) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
 func matchFromChild(children []Node, childIdx int, inputLine string, pos int, caps []string) []MatchResult {
 	// Base case: If we have successfully matched all children, we have a valid result.
 	if childIdx == len(children) {
@@ -30,12 +37,16 @@ func matchFromChild(children []Node, childIdx int, inputLine string, pos int, ca
 	}
 
 	var allResults []MatchResult
-
 	// Get the current child node to match.
 	child := children[childIdx]
-
 	// Find all possible ways the current child can match starting from `pos`.
 	matches := matchPossibilities(child, inputLine, pos, caps)
+
+	// --- FIX: IMPLEMENT GREEDY MATCHING ---
+	// If the child is a greedy quantifier, try the longest match first by reversing the possibilities.
+	if qn, ok := child.(*QuantifierNode); ok && qn.Greed {
+		reverseMatches(matches)
+	}
 
 	for _, res := range matches {
 		recursiveResults := matchFromChild(children, childIdx+1, inputLine, res.EndIdx, res.Captures)
@@ -95,14 +106,71 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 		}
 	case *DotNode:
 		fmt.Println("DotNode")
+		if startIdx < len(inputLine) {
+			return []MatchResult{{EndIdx: startIdx + 1, Captures: captures}}
+		}
 	case *ConcatenationNode:
 		fmt.Println("ConcatenationNode with children:", node.NodeChildren)
 		// Start the recursive matching process from the first child (index 0).
 		return matchFromChild(node.NodeChildren, 0, inputLine, startIdx, captures)
 	case *AlternationNode:
 		fmt.Println("AlternationNode with branches:", node.Branches)
+		var allResults []MatchResult
+		for _, branch := range node.Branches {
+			branchResults := matchPossibilities(branch, inputLine, startIdx, captures)
+			allResults = append(allResults, branchResults...)
+		}
+		return allResults
+	case *CaptureGroupNode:
+		var results []MatchResult
+		childPoss := matchPossibilities(node.Child, inputLine, startIdx, captures)
+		for _, p := range childPoss {
+			newCaps := make([]string, len(p.Captures))
+			copy(newCaps, p.Captures)
+			for len(newCaps) <= node.Index {
+				newCaps = append(newCaps, "") // append an empty string as a placeholder
+			}
+
+			// store the captured substring
+			newCaps[node.Index] = inputLine[startIdx:p.EndIdx]
+
+			results = append(results, MatchResult{EndIdx: p.EndIdx, Captures: newCaps})
+		}
+		return results
+	case *QuantifierNode:
+		var results []MatchResult
+		switch node.Type {
+		case "ZERO_OR_ONE":
+			// Zero occurrences (always a valid match that consumes nothing)
+			results = append(results, MatchResult{EndIdx: startIdx, Captures: captures})
+			// One occurrence
+			oneMatch := matchPossibilities(node.NodeChildren, inputLine, startIdx, captures)
+			results = append(results, oneMatch...)
+			return results
+		case "ZERO_OR_MORE":
+			// Zero occurrences
+			results = append(results, MatchResult{EndIdx: startIdx, Captures: captures})
+			// One or more occurrences
+			firstMatches := matchPossibilities(node.NodeChildren, inputLine, startIdx, captures)
+			for _, res := range firstMatches {
+				// Recursively match more occurrences from the new end position
+				moreMatches := matchPossibilities(node, inputLine, res.EndIdx, res.Captures)
+				results = append(results, moreMatches...)
+			}
+			return results
+		case "ONE_OR_MORE":
+			// Must match at least once
+			firstMatches := matchPossibilities(node.NodeChildren, inputLine, startIdx, captures)
+			for _, res := range firstMatches {
+				// After the first match, it behaves like ZERO_OR_MORE
+				zeroOrMoreNode := NewQuantifierNode(node.NodeChildren, "ZERO_OR_MORE", node.Greed)
+				moreMatches := matchPossibilities(zeroOrMoreNode, inputLine, res.EndIdx, res.Captures)
+				results = append(results, moreMatches...)
+			}
+			return results
+		}
 	}
-	return results
+	return nil
 }
 
 func matchEntireAst(ast Node, inputLine string, parser *RegexParser) (bool, int, []string) {
