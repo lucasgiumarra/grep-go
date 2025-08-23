@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
 )
-
-// Ensures gofmt doesn't remove the "bytes" import above (feel free to remove this!)
-var _ = bytes.ContainsAny
 
 type MatchResult struct {
 	EndIdx   int
@@ -62,14 +59,14 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 	var results []MatchResult
 	switch node := astNode.(type) {
 	case *LiteralNode:
-		fmt.Println("LiteralNode with char:", node.Char)
+		// fmt.Println("LiteralNode with char:", node.Char)
 		if startIdx < len(inputLine) && inputLine[startIdx] == byte(node.Char) {
 			snap := append([]string(nil), captures...)
 			results = append(results, MatchResult{EndIdx: startIdx + 1, Captures: snap})
 		}
 		return results
 	case *CharClassNode:
-		fmt.Println("CharClassNode with char:", node.Char)
+		// fmt.Println("CharClassNode with char:", node.Char)
 		if startIdx < len(inputLine) {
 			ch := inputLine[startIdx]
 			ok := (node.Char == 'd' && isDigitByte(ch)) || (node.Char == 'w' && isAlphaNumeric(ch))
@@ -105,16 +102,16 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 			}
 		}
 	case *DotNode:
-		fmt.Println("DotNode")
+		// fmt.Println("DotNode")
 		if startIdx < len(inputLine) {
 			return []MatchResult{{EndIdx: startIdx + 1, Captures: captures}}
 		}
 	case *ConcatenationNode:
-		fmt.Println("ConcatenationNode with children:", node.NodeChildren)
+		// fmt.Println("ConcatenationNode with children:", node.NodeChildren)
 		// Start the recursive matching process from the first child (index 0).
 		return matchFromChild(node.NodeChildren, 0, inputLine, startIdx, captures)
 	case *AlternationNode:
-		fmt.Println("AlternationNode with branches:", node.Branches)
+		// fmt.Println("AlternationNode with branches:", node.Branches)
 		var allResults []MatchResult
 		for _, branch := range node.Branches {
 			branchResults := matchPossibilities(branch, inputLine, startIdx, captures)
@@ -204,43 +201,156 @@ func matchEntireAst(ast Node, inputLine string, parser *RegexParser) (bool, int,
 	return false, -1, nil
 }
 
+func searchFile(filename string, ast Node, parser *RegexParser, printFilenames bool) (bool, error) {
+	/*
+			Searches a single file for the pattern defined by the AST.
+
+		    Returns:
+		        True if a match was found in this file, False otherwise.
+	*/
+	file, openErr := os.Open(filename)
+	if openErr != nil {
+		return false, openErr
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	fileHadMatch := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		isMatched, _, _ := matchEntireAst(ast, line, parser)
+		if isMatched {
+			if printFilenames {
+				fmt.Printf("%s:%s\n", filename, line)
+			} else {
+				fmt.Println(line)
+			}
+			fileHadMatch = true
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fileHadMatch, err
+	}
+
+	return fileHadMatch, nil
+}
+
+// searchRecursive walks a directory and searches all files within it.
+func searchRecursive(root string, ast Node, parser *RegexParser) (bool, error) {
+	anyMatchFound := false
+	walkErr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err // Propagate errors from walking the path
+		}
+		if !info.IsDir() {
+			// Always print filenames in recursive mode
+			fileHadMatch, searchErr := searchFile(path, ast, parser, true)
+			if searchErr != nil {
+				// Silently ignore errors on individual files
+				return nil
+			}
+			if fileHadMatch {
+				anyMatchFound = true
+			}
+		}
+		return nil
+	})
+	return anyMatchFound, walkErr
+}
+
 // Usage: echo <input_text> | your_program.sh -E <pattern>
 func main() {
-	if len(os.Args) < 3 || os.Args[1] != "-E" {
-		fmt.Fprintf(os.Stderr, "usage: mygrep -E <pattern>\n")
-		os.Exit(2) // 1 means no lines were selected, >1 means error
+	// --- 1. Argument Parsing ---
+	args := os.Args[1:]
+	var patternStr string
+	var paths []string
+	recursive := false
+
+	// Manual argument parsing loop
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-r" {
+			recursive = true
+		} else if arg == "-E" {
+			if i+1 < len(args) {
+				patternStr = args[i+1]
+				i++ // Skip the next argument since we've consumed it
+			} else {
+				fmt.Fprintln(os.Stderr, "error: -E flag requires a pattern")
+				os.Exit(2)
+			}
+		} else if patternStr == "" {
+			// If -E hasn't been seen, the first non-flag is the pattern
+			patternStr = arg
+		} else {
+			// Any subsequent arguments are paths
+			paths = append(paths, arg)
+		}
 	}
 
-	pattern := os.Args[2]
-
-	input, err := io.ReadAll(os.Stdin) // assume we're only dealing with a single line
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: read input text: %v\n", err)
+	if patternStr == "" {
+		fmt.Fprintf(os.Stderr, "usage: mygrep [-r] -E <pattern> [file...]\n")
 		os.Exit(2)
 	}
-	line := string(input)
 
-	fmt.Println("Input:", line)
-	fmt.Println("Pattern:", pattern)
-
-	parser := NewRegexParser(pattern)
+	// --- 2. Main Logic ---
+	parser := NewRegexParser(patternStr)
 	ast, err := parser.parse()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing pattern: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Generated AST: %s\n\n", ast.String())
-
-	// --- STAGE 2: MATCHING ---
-	fmt.Println("Attempting to match...")
-	isMatch, _, _ := matchEntireAst(ast, line, parser)
-
-	if isMatch {
-		fmt.Println("Result: Match found!")
-	} else {
-		fmt.Println("Result: No match found.")
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "error: invalid pattern: %v\n", err)
+		os.Exit(2)
 	}
 
-	// default exit code is 0 which means success
+	// Case 1: No paths provided, read from standard input.
+	if len(paths) == 0 {
+		scanner := bufio.NewScanner(os.Stdin)
+		anyMatchFound := false
+		for scanner.Scan() {
+			line := scanner.Text()
+			isMatched, _, _ := matchEntireAst(ast, line, parser)
+			if isMatched {
+				fmt.Println(line)
+				anyMatchFound = true
+			}
+		}
+		if !anyMatchFound {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Case 2: Paths are provided.
+	printFilenames := recursive || len(paths) > 1
+	overallMatchFound := false
+
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			// Silently skip invalid paths
+			continue
+		}
+
+		var pathHadMatch bool
+		var searchErr error
+
+		if info.IsDir() && recursive {
+			pathHadMatch, searchErr = searchRecursive(path, ast, parser)
+		} else if !info.IsDir() {
+			pathHadMatch, searchErr = searchFile(path, ast, parser, printFilenames)
+		}
+
+		if searchErr != nil {
+			continue // Silently skip
+		}
+		if pathHadMatch {
+			overallMatchFound = true
+		}
+	}
+
+	if !overallMatchFound {
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
