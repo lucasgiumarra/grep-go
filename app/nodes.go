@@ -175,3 +175,21 @@ func (cgn *CaptureGroupNode) String() string {
 func (cgn *CaptureGroupNode) Children() []Node {
 	return []Node{cgn.Child}
 }
+
+// ------------------------------------------------------------------------------------------
+
+type BackreferenceNode struct {
+	Index int
+}
+
+func NewBackreferenceNode(idx int) *BackreferenceNode {
+	return &BackreferenceNode{Index: idx}
+}
+
+func (bn *BackreferenceNode) String() string {
+	return fmt.Sprintf("BackreferenceNode(index=%d)", bn.Index)
+}
+
+func (bn *BackreferenceNode) Children() []Node {
+	return nil
+}

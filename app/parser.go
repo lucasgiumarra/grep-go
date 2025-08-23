@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type RegexParser struct {
 	pattern    []rune
@@ -61,6 +64,12 @@ func (rp *RegexParser) parseEscapeSeq() (Node, error) {
 	escapedChar := rp.peek()
 	if escapedChar == 0 {
 		return nil, fmt.Errorf("incomplete escape seqeunce at end of pattern")
+	}
+
+	if escapedChar >= '1' && escapedChar <= '9' {
+		rp.advance()
+		index, _ := strconv.Atoi(string(escapedChar))
+		return NewBackreferenceNode(index), nil
 	}
 
 	// We have processed this character, so consume it

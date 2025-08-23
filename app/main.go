@@ -169,6 +169,14 @@ func matchPossibilities(astNode Node, inputLine string, startIdx int, captures [
 			}
 			return results
 		}
+	case *BackreferenceNode:
+		if node.Index < len(captures) && captures[node.Index] != "" {
+			text := captures[node.Index]
+			if len(inputLine) >= startIdx+len(text) && inputLine[startIdx:startIdx+len(text)] == text {
+				return []MatchResult{{EndIdx: startIdx + len(text), Captures: captures}}
+			}
+		}
+		return nil
 	}
 	return nil
 }
